@@ -151,5 +151,5 @@ information is *integrated*, not kept separate.
   filters**.
 - The rule **"filter depth = input depth"** holds at every layer, which is why
   channel counts grow with depth.
-- Next folder: [padding](../padding/README.md) — controlling output size and
+- Next folder: [padding](../padding/00-overview.md) — controlling output size and
   protecting the edges.

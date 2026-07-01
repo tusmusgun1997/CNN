@@ -15,5 +15,5 @@ style as the rest of this course.
 > Stride = the step size of the sliding filter. Stride 1 visits every position;
 > stride 2 skips every other one, halving the output size.
 
-See also the [implementation folder](../implementation/README.md), which runs
+See also the [implementation folder](../implementation/00-overview.md), which runs
 both **padding** and **strides** in real Keras code.

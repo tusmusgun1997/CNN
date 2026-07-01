@@ -1,7 +1,7 @@
 # Convolution Operation — Deep Dive
 
 This folder zooms into the single most important operation in a CNN: the
-**convolution** itself. If the [`basics`](../basics/README.md) folder gave you
+**convolution** itself. If the [`basics`](../basics/00-overview.md) folder gave you
 the big picture, this folder works out the actual arithmetic with concrete
 numbers.
 

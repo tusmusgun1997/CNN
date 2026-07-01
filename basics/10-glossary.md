@@ -98,4 +98,4 @@ whenever a word trips you up.
 
 ---
 
-← Back to the [course index](README.md)
+← Back to the [course index](00-overview.md)

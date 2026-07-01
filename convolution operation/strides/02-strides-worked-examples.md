@@ -98,7 +98,7 @@ So on a single 6×6 image you can get:
 | valid | 2 | 2 × 2 |
 | same | 2 | 3 × 3 |
 
-These are exactly the four cases the [Keras implementation](../implementation/README.md)
+These are exactly the four cases the [Keras implementation](../implementation/00-overview.md)
 runs and prints, so you can verify these hand calculations against real output.
 
 ---
@@ -110,4 +110,4 @@ runs and prints, so you can verify these hand calculations against real output.
 - The **floor** in the formula can **drop** edge positions that would overflow.
 - Padding + stride combine predictably: `valid` shrinks more, `same` gives
   `⌈N/S⌉`.
-- Verify all of this yourself in the [implementation](../implementation/README.md).
+- Verify all of this yourself in the [implementation](../implementation/00-overview.md).

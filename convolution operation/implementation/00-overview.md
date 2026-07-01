@@ -91,4 +91,4 @@ convolution operation/
 └── implementation/          ← YOU ARE HERE: run it in Keras
 ```
 
-← Back to the [convolution operation index](../README.md).
+← Back to the [convolution operation index](../00-overview.md).

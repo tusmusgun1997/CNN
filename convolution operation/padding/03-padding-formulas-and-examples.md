@@ -142,4 +142,4 @@ Do this once per dimension and you'll always know the output shape.
 - Zero-padded borders create a small, **harmless artifact** the network learns to
   ignore.
 - Run the 5-step checklist on any conv layer to predict its output shape.
-- ← Back to the [convolution operation index](../README.md).
+- ← Back to the [convolution operation index](../00-overview.md).
