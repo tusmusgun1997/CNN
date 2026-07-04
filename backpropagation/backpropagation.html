@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backpropagation in a CNN — Every Derivative, Fully Worked</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --ink:#e9eef8; --muted:#93a2c4; --panel:#111a30cc; --line:#243257;
+    --fwd:#38bdf8; --fwd2:#22d3ee; --grad:#fb7185; --grad2:#f59e0b;
+    --conv:#f97316; --pool:#14b8a6; --fc:#a855f7; --loss:#f43f5e; --ok:#34d399;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;color:var(--ink);font:15px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    background:
+      radial-gradient(1100px 550px at 8% -8%,#132145 0,transparent 60%),
+      radial-gradient(900px 500px at 100% 0,#2a1440 0,transparent 55%),
+      linear-gradient(180deg,var(--bg),#070a13 90%);
+    background-attachment:fixed;min-height:100vh}
+  .wrap{max-width:1060px;margin:0 auto;padding:28px 20px 90px}
+  code{background:#0e1730;padding:2px 6px;border-radius:6px;color:#ffd9a8;font-size:13px}
+  b.f{color:var(--fwd)} b.g{color:var(--grad)} b.a{color:var(--fc)} b.c{color:var(--conv)}
+
+  .hero{text-align:center;padding:38px 18px 24px;border-radius:22px;position:relative;overflow:hidden;
+    background:linear-gradient(120deg,#0f1a38,#0d1428 55%,#1c1140);border:1px solid var(--line);box-shadow:0 20px 60px #0009}
+  .hero h1{margin:0;font-size:clamp(26px,5vw,44px);font-weight:800;
+    background:linear-gradient(90deg,#7dd3fc,#a78bfa,#fca5a5,#fbbf24,#7dd3fc);background-size:300% 100%;
+    -webkit-background-clip:text;background-clip:text;color:transparent;animation:shim 8s linear infinite}
+  @keyframes shim{to{background-position:300% 0}}
+  .hero p{color:var(--muted);max-width:680px;margin:12px auto 0;font-size:16px}
+  .badges{margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .badge{padding:5px 13px;border-radius:999px;font-size:12.5px;border:1px solid var(--line);background:#101c3a;color:#cfe0ff}
+
+  h2{font-size:23px;margin:50px 0 4px;display:flex;align-items:center;gap:11px}
+  h2 .n{font-size:14px;color:#0a0e1a;background:linear-gradient(135deg,#7dd3fc,#a78bfa);width:28px;height:28px;
+    border-radius:8px;display:grid;place-items:center;font-weight:800}
+  .lead{color:var(--muted);max-width:860px;margin:0 0 12px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:14px;
+    backdrop-filter:blur(6px);box-shadow:0 12px 36px #0006}
+
+  .sticky{position:sticky;top:0;z-index:40;margin:0 -20px 0;padding:10px 20px;
+    background:#0a0e1aee;backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .pipe{display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap}
+  .node{padding:5px 9px;border-radius:8px;font-weight:700;font-size:12.5px;border:1px solid var(--line);
+    background:#0f1830;transition:.25s;white-space:nowrap}
+  .node.on{transform:translateY(-2px) scale(1.08);box-shadow:0 0 16px #0006}
+  .node.f.on{background:linear-gradient(135deg,var(--fwd),var(--fwd2));color:#04121c;border-color:transparent}
+  .node.g.on{background:linear-gradient(135deg,var(--grad),var(--grad2));color:#1a0a0a;border-color:transparent}
+  .parr{color:var(--muted);font-size:14px}
+  .ctl{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+  button{font:inherit;font-size:13.5px;font-weight:700;padding:8px 15px;border-radius:10px;border:1px solid var(--line);
+    background:#132043;color:var(--ink);cursor:pointer;transition:.2s}
+  button:hover{transform:translateY(-2px);border-color:#3b5bce}
+  button.grad{background:linear-gradient(135deg,#fb7185,#f59e0b);color:#1a0a0a;border:0}
+
+  .mx{display:inline-grid;gap:4px;padding:7px;border-radius:10px;background:#0c1330;border:1px solid var(--line);vertical-align:middle}
+  .mx .c{min-width:34px;height:34px;padding:0 7px;display:grid;place-items:center;border-radius:6px;font-size:13px;font-weight:700;
+    background:linear-gradient(135deg,#1a294f,#1e2c52);color:#cfe0ff;opacity:0;transform:scale(.6);animation:pop .4s forwards}
+  @keyframes pop{to{opacity:1;transform:scale(1)}}
+  .mx.fwd .c{background:linear-gradient(135deg,#0c4a6e,#155e75);color:#bae6fd}
+  .mx.grad .c{background:linear-gradient(135deg,#7f1d3a,#7c2d12);color:#fecdd3}
+  .mx.mask .c{background:#0e1730;color:#93a2c4}
+  .mx .c.zero{opacity:.28} .mx .c.one{background:linear-gradient(135deg,#14532d,#166534);color:#bbf7d0;opacity:1}
+  .mxwrap{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0}
+  .lbl{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
+  .op{font-size:20px;color:var(--muted);padding:0 2px}
+  .scalar-lbl{display:grid;place-items:center;width:44px;height:44px;border-radius:10px;font-weight:800;font-size:18px;
+    background:linear-gradient(135deg,#7f1d3a,#7c2d12);color:#fecdd3}
+
+  .eq{font-size:16px;line-height:2.5;margin:6px 0;overflow-x:auto;white-space:nowrap}
+  .eq.w{white-space:normal;line-height:2.2}
+  .frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle;margin:0 3px}
+  .frac>span:first-child{border-bottom:1.6px solid currentColor;padding:0 7px}
+  .frac>span:last-child{padding:2px 7px 0}
+  .dot{color:var(--muted);margin:0 2px}
+  .box{display:inline-block;padding:3px 10px;border-radius:8px;background:#0e1730;border:1px solid var(--line)}
+  .keep{background:linear-gradient(135deg,#134e4a,#155e75);color:#a7f3d0;padding:2px 9px;border-radius:8px;font-weight:700}
+  .shape{display:inline-block;font-size:12px;font-weight:800;color:#0a0e1a;background:linear-gradient(135deg,#7dd3fc,#a78bfa);
+    padding:2px 9px;border-radius:999px;margin-left:6px}
+  .shared{outline:2px dashed var(--ok);outline-offset:3px;border-radius:8px;padding:2px 4px}
+
+  /* worked-derivation block */
+  .deriv{background:#0b1526;border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:10px 0}
+  .deriv .tag2{font-size:11px;color:#8fb4ff;text-transform:uppercase;letter-spacing:.6px;font-weight:800;margin-bottom:2px;display:block}
+  .deriv .ln{padding:5px 0 5px 22px;position:relative;font-size:15.5px}
+  .deriv .ln::before{content:attr(data-s);position:absolute;left:0;color:var(--muted);font-size:12px;font-weight:800;top:8px}
+  .deriv .note2{color:var(--muted);font-size:12.5px;padding-left:22px}
+  .chain{background:linear-gradient(160deg,#12261f,#0e1c28);border-color:#1f6b52}
+
+  .bp-step{border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-top:16px;background:#0d1526cc;
+    position:relative;transition:.3s;opacity:.6}
+  .bp-step.shown{opacity:1}
+  .bp-step.firing{border-color:var(--grad);box-shadow:0 0 0 1px var(--grad),0 0 34px #fb71855c;transform:translateY(-3px)}
+  .bp-step h3{margin:0 0 6px;font-size:17px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .step-badge{font-size:12px;font-weight:800;color:#1a0a0a;background:linear-gradient(135deg,var(--grad),var(--grad2));padding:3px 10px;border-radius:999px}
+  .simple{color:#cbd5f5;font-size:14px;margin:8px 0 0;padding:8px 12px;border-left:3px solid var(--ok);background:#0f1c22;border-radius:0 8px 8px 0}
+  .why{color:var(--muted);font-size:13px;margin:6px 0}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:760px){.two{grid-template-columns:1fr}}
+  .lvl{border-radius:16px;padding:18px;border:1px solid var(--line)}
+  .lvl.ann{background:linear-gradient(160deg,#1b1338,#0e1428);border-color:#5b3ea8}
+  .lvl.cnn{background:linear-gradient(160deg,#2a1608,#0e1428);border-color:#a3560f}
+  .lvl h3{margin:0 0 4px;font-size:16px}
+  .tagl{font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:999px;color:#0a0e1a}
+
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px}
+  th,td{padding:9px 10px;border-bottom:1px solid #1f2b49;text-align:left;vertical-align:middle}
+  th{color:#bcd0ff} tr:hover td{background:#101c38}
+  .reveal{opacity:0;transform:translateY(16px);transition:.6s} .reveal.in{opacity:1;transform:none}
+  .foot{margin-top:56px;color:var(--muted);font-size:13px;text-align:center;border-top:1px solid #1f2b49;padding-top:18px}
+  .note{background:#0f1c22;border-left:3px solid var(--fwd);border-radius:0 10px 10px 0;padding:12px 14px;color:#cbd5f5;font-size:13.5px;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>Backpropagation — Every Derivative Worked Out</h1>
+    <p>No result is dropped in from nowhere. Every local derivative is derived term-by-term,
+       and the chain rule is written out in <b>every single step</b>.</p>
+    <div class="badges">
+      <span class="badge">Formulas only</span>
+      <span class="badge">Sigmoid derivative proven</span>
+      <span class="badge">Chain rule shown every step</span>
+    </div>
+  </header>
+
+  <div class="sticky">
+    <div class="pipe" id="pipe"></div>
+    <div class="ctl">
+      <button class="grad" onclick="playBackward()">◀ Play backward, step by step</button>
+      <button onclick="resetAnim()">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- 0. FORWARD SHAPES -->
+  <h2><span class="n">0</span>Forward pass — the shapes &amp; the equations</h2>
+  <div class="panel">
+    <div class="eq w" style="text-align:center;font-size:15px">
+      X<span class="shape">6×6</span> <span class="op">→</span>
+      Z₁<span class="shape">4×4</span> <span class="op">→</span>
+      A₁<span class="shape">4×4</span> <span class="op">→</span>
+      P₁<span class="shape">2×2</span> <span class="op">→</span>
+      F<span class="shape">4×1</span> <span class="op">→</span>
+      Z₂<span class="shape">1×1</span> <span class="op">→</span>
+      A₂<span class="shape">1×1</span> <span class="op">→</span> L
+    </div>
+    <table>
+      <tr><th>Forward equation</th><th>Meaning</th></tr>
+      <tr><td>Z₁ = conv(X, W₁) + b₁</td><td>convolution</td></tr>
+      <tr><td>A₁ = ReLU(Z₁) = max(0, Z₁)</td><td>activation</td></tr>
+      <tr><td>P₁ = maxpool(A₁)</td><td>subsampling</td></tr>
+      <tr><td>F = flatten(P₁)</td><td>reshape 2×2 → 4×1</td></tr>
+      <tr><td>Z₂ = W₂·F + b₂</td><td>dense layer</td></tr>
+      <tr><td>A₂ = σ(Z₂) = 1 / (1 + e<sup>−Z₂</sup>)</td><td>sigmoid → probability ŷ</td></tr>
+      <tr><td>L = −[y·ln A₂ + (1−y)·ln(1−A₂)]</td><td>binary cross-entropy</td></tr>
+    </table>
+  </div>
+
+  <!-- 1. GOAL & RULE -->
+  <h2><span class="n">1</span>The goal &amp; how the chain rule works here</h2>
+  <div class="panel">
+    <p class="lead" style="margin-top:0">We want <span class="frac"><span>∂L</span><span>∂θ</span></span> for every weight θ (W₁, b₁, W₂, b₂).
+       The loss doesn't touch these weights directly, so we <b>chain</b> through every layer between them:</p>
+    <div class="eq w" style="text-align:center">
+      <span class="frac"><span>∂L</span><span>∂θ</span></span> =
+      <span class="frac"><span>∂L</span><span>∂(next)</span></span> ·
+      <span class="frac"><span>∂(next)</span><span>∂(next-1)</span></span> · … ·
+      <span class="frac"><span>∂(layer of θ)</span><span>∂θ</span></span>
+    </div>
+    <div class="simple"><b>Golden rule:</b> the gradient <span class="frac"><span>∂L</span><span>∂(thing)</span></span> has the <b>same shape</b> as that thing —
+      so each step is also a <b>matrix reshape</b>. We carry a "running gradient" and multiply it by one new local derivative each step.</div>
+  </div>
+
+  <!-- 2. STEP BY STEP -->
+  <h2><span class="n">2</span>Step by step — derive each term, then chain</h2>
+  <p class="lead">Every step below has three parts: the <b>Forward</b> equation, the <b>Local derivative</b> (fully worked out —
+     nothing assumed), and the <b>Chain rule</b> that multiplies it into the running gradient. Press <b class="g">◀ Play backward</b>.</p>
+
+  <div id="bpsteps">
+
+    <!-- STEP 1 -->
+    <div class="bp-step" data-bp="0">
+      <h3><span class="step-badge">Step 1</span> Loss → A₂ <span class="shape">1×1</span></h3>
+      <div class="deriv">
+        <span class="tag2">Forward</span>
+        <div class="ln" data-s="">L = −[ y·ln(A₂) + (1−y)·ln(1−A₂) ]</div>
+      </div>
+      <div class="deriv">
+        <span class="tag2">Local derivative — differentiate term by term</span>
+        <div class="ln" data-s="a">d/dA₂ [ y·ln A₂ ] = y · <span class="frac"><span>1</span><span>A₂</span></span> = <span class="frac"><span>y</span><span>A₂</span></span></div>
+        <div class="ln" data-s="b">d/dA₂ [ (1−y)·ln(1−A₂) ] = (1−y) · <span class="frac"><span>1</span><span>1−A₂</span></span> · (−1) = −<span class="frac"><span>1−y</span><span>1−A₂</span></span>
+          <div class="note2">(the −1 is the derivative of the inside, 1−A₂)</div></div>
+        <div class="ln" data-s="c"><span class="frac"><span>∂L</span><span>∂A₂</span></span> = −<span class="frac"><span>y</span><span>A₂</span></span> + <span class="frac"><span>1−y</span><span>1−A₂</span></span></div>
+        <div class="ln" data-s="d">put over one denominator A₂(1−A₂):
+          &nbsp;= <span class="frac"><span>−y(1−A₂) + (1−y)A₂</span><span>A₂(1−A₂)</span></span>
+          = <span class="frac"><span>−y + yA₂ + A₂ − yA₂</span><span>A₂(1−A₂)</span></span>
+          = <span class="keep"><span class="frac"><span>A₂ − y</span><span>A₂(1−A₂)</span></span></span></div>
+      </div>
+      <div class="simple"><b>Simple:</b> this is how much the loss moves if the prediction A₂ moves. One number in, one number out.</div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="bp-step" data-bp="1">
+      <h3><span class="step-badge">Step 2</span> A₂ → Z₂ &nbsp;— proving the sigmoid derivative <span class="shape">1×1</span></h3>
+      <div class="deriv">
+        <span class="tag2">Forward</span>
+        <div class="ln" data-s="">A₂ = σ(Z₂) = <span class="frac"><span>1</span><span>1 + e<sup>−Z₂</sup></span></span> = (1 + e<sup>−Z₂</sup>)<sup>−1</sup></div>
+      </div>
+      <div class="deriv">
+        <span class="tag2">Local derivative ∂A₂/∂Z₂ — this is the part you asked about</span>
+        <div class="ln" data-s="a">apply the chain rule to (1 + e<sup>−Z₂</sup>)<sup>−1</sup> &nbsp;(outer = power −1, inner = 1+e<sup>−Z₂</sup>):
+          <div class="note2">d/du[u<sup>−1</sup>] = −u<sup>−2</sup>, then times the derivative of the inside</div></div>
+        <div class="ln" data-s="b"><span class="frac"><span>∂A₂</span><span>∂Z₂</span></span> = −(1 + e<sup>−Z₂</sup>)<sup>−2</sup> · <span class="frac"><span>d</span><span>dZ₂</span></span>(1 + e<sup>−Z₂</sup>)</div>
+        <div class="ln" data-s="c"><span class="frac"><span>d</span><span>dZ₂</span></span>(1 + e<sup>−Z₂</sup>) = 0 + e<sup>−Z₂</sup>·(−1) = −e<sup>−Z₂</sup>
+          <div class="note2">(derivative of e<sup>−Z₂</sup> is e<sup>−Z₂</sup> times the derivative of −Z₂, which is −1)</div></div>
+        <div class="ln" data-s="d">so &nbsp; <span class="frac"><span>∂A₂</span><span>∂Z₂</span></span> = −(1 + e<sup>−Z₂</sup>)<sup>−2</sup> · (−e<sup>−Z₂</sup>) =
+          <span class="frac"><span>e<sup>−Z₂</sup></span><span>(1 + e<sup>−Z₂</sup>)<sup>2</sup></span></span></div>
+        <div class="ln" data-s="e">now rewrite it using A₂ itself. Notice: &nbsp; 1 − A₂ = 1 − <span class="frac"><span>1</span><span>1+e<sup>−Z₂</sup></span></span> = <span class="frac"><span>e<sup>−Z₂</sup></span><span>1+e<sup>−Z₂</sup></span></span></div>
+        <div class="ln" data-s="f">therefore &nbsp; A₂·(1−A₂) = <span class="frac"><span>1</span><span>1+e<sup>−Z₂</sup></span></span> · <span class="frac"><span>e<sup>−Z₂</sup></span><span>1+e<sup>−Z₂</sup></span></span> =
+          <span class="frac"><span>e<sup>−Z₂</sup></span><span>(1+e<sup>−Z₂</sup>)<sup>2</sup></span></span></div>
+        <div class="ln" data-s="✓">the two boxed expressions are identical, so &nbsp; <span class="keep"><span class="frac"><span>∂A₂</span><span>∂Z₂</span></span> = A₂(1 − A₂)</span></div>
+      </div>
+      <div class="deriv chain">
+        <span class="tag2">Chain rule — multiply Step 1 × Step 2</span>
+        <div class="ln" data-s=""><span class="frac"><span>∂L</span><span>∂Z₂</span></span> =
+          <span class="frac"><span>∂L</span><span>∂A₂</span></span> · <span class="frac"><span>∂A₂</span><span>∂Z₂</span></span> =
+          <span class="frac"><span>A₂−y</span><span>A₂(1−A₂)</span></span> · A₂(1−A₂) = <span class="keep">A₂ − y = δ</span></div>
+        <div class="note2">the A₂(1−A₂) on the bottom of Step 1 cancels the A₂(1−A₂) from Step 2.</div>
+      </div>
+      <div class="simple"><b>Simple:</b> the sigmoid's slope is A₂(1−A₂); when multiplied by the loss derivative it cancels perfectly, leaving the clean error <b>δ = A₂ − y</b>.</div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="bp-step" data-bp="2">
+      <h3><span class="step-badge" style="background:linear-gradient(135deg,#a855f7,#7dd3fc)">Step 3 · ANN</span> Z₂ → W₂, b₂ <span class="shape">1×4 &amp; 1×1</span></h3>
+      <div class="deriv">
+        <span class="tag2">Forward (written out fully)</span>
+        <div class="ln" data-s="">Z₂ = W₂·F + b₂ = w₂₁f₁ + w₂₂f₂ + w₂₃f₃ + w₂₄f₄ + b₂</div>
+      </div>
+      <div class="deriv">
+        <span class="tag2">Local derivatives — pick one weight at a time</span>
+        <div class="ln" data-s="a"><span class="frac"><span>∂Z₂</span><span>∂w₂ⱼ</span></span> = fⱼ
+          <div class="note2">only the term w₂ⱼfⱼ contains w₂ⱼ; every other term is a constant → 0. So the derivative is just its input fⱼ.</div></div>
+        <div class="ln" data-s="b"><span class="frac"><span>∂Z₂</span><span>∂b₂</span></span> = 1 &nbsp;<span class="note2" style="display:inline">(b₂ adds directly)</span></div>
+      </div>
+      <div class="deriv chain">
+        <span class="tag2">Chain rule (running gradient = δ)</span>
+        <div class="ln" data-s=""><span class="frac"><span>∂L</span><span>∂w₂ⱼ</span></span> = <span class="frac"><span>∂L</span><span>∂Z₂</span></span>·<span class="frac"><span>∂Z₂</span><span>∂w₂ⱼ</span></span> = δ·fⱼ &nbsp;⟹&nbsp; <span class="frac"><span>∂L</span><span>∂W₂</span></span> = δ·Fᵀ</div>
+        <div class="ln" data-s=""><span class="frac"><span>∂L</span><span>∂b₂</span></span> = <span class="frac"><span>∂L</span><span>∂Z₂</span></span>·<span class="frac"><span>∂Z₂</span><span>∂b₂</span></span> = δ·1 = δ</div>
+      </div>
+      <div class="mxwrap"><div><div class="mx grad" data-m="dW2"></div><div class="lbl">∂L/∂W₂ = [δf₁, δf₂, δf₃, δf₄] &nbsp;(1×4)</div></div></div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="bp-step" data-bp="3">
+      <h3><span class="step-badge">Step 4</span> Z₂ → F <span class="shape">1×1 → 4×1</span></h3>
+      <div class="deriv">
+        <span class="tag2">Local derivative — differentiate Z₂ w.r.t. each input</span>
+        <div class="ln" data-s="a"><span class="frac"><span>∂Z₂</span><span>∂fⱼ</span></span> = w₂ⱼ
+          <div class="note2">from Z₂ = w₂₁f₁+…+b₂, the coefficient of fⱼ is w₂ⱼ.</div></div>
+      </div>
+      <div class="deriv chain">
+        <span class="tag2">Chain rule</span>
+        <div class="ln" data-s=""><span class="frac"><span>∂L</span><span>∂fⱼ</span></span> = <span class="frac"><span>∂L</span><span>∂Z₂</span></span>·<span class="frac"><span>∂Z₂</span><span>∂fⱼ</span></span> = δ·w₂ⱼ = gⱼ &nbsp;⟹&nbsp; <span class="frac"><span>∂L</span><span>∂F</span></span> = W₂ᵀ·δ</div>
+      </div>
+      <div class="mxwrap">
+        <div><div class="scalar-lbl">δ</div><div class="lbl">1×1</div></div>
+        <span class="op">× W₂ᵀ →</span>
+        <div><div class="mx grad" data-m="dFcol"></div><div class="lbl">∂L/∂F (4×1)</div></div>
+      </div>
+      <div class="simple"><b>Matrix transform:</b> the single δ becomes a 4×1 column — one gⱼ = δ·w₂ⱼ per input.</div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="bp-step" data-bp="4">
+      <h3><span class="step-badge">Step 5</span> F → P₁ &nbsp;(un-flatten) <span class="shape">4×1 → 2×2</span></h3>
+      <div class="deriv">
+        <span class="tag2">Forward &amp; local derivative</span>
+        <div class="ln" data-s="a">F = flatten(P₁): f₁=P₁[0,0], f₂=P₁[0,1], f₃=P₁[1,0], f₄=P₁[1,1]</div>
+        <div class="ln" data-s="b">each fₖ equals exactly one P₁ cell, so <span class="frac"><span>∂fₖ</span><span>∂P₁-cell</span></span> = 1 (matched) or 0 (otherwise)</div>
+      </div>
+      <div class="deriv chain">
+        <span class="tag2">Chain rule</span>
+        <div class="ln" data-s="">∂L/∂P₁[cell] = ∂L/∂fₖ · 1 = gₖ &nbsp;⟹&nbsp; just <b>reshape</b> the column back to 2×2</div>
+      </div>
+      <div class="mxwrap">
+        <div><div class="mx grad" data-m="dFcol"></div><div class="lbl">∂L/∂F</div></div>
+        <span class="op">→ reshape →</span>
+        <div><div class="mx grad" data-m="dP1"></div><div class="lbl">∂L/∂P₁</div></div>
+      </div>
+    </div>
+
+    <!-- STEP 6 -->
+    <div class="bp-step" data-bp="5">
+      <h3><span class="step-badge">Step 6</span> P₁ → A₁ &nbsp;(max-pool) <span class="shape">2×2 → 4×4</span></h3>
+      <div class="deriv">
+        <span class="tag2">Forward &amp; local derivative</span>
+        <div class="ln" data-s="a">P₁[win] = max(the four A₁ cells in that window)</div>
+        <div class="ln" data-s="b"><span class="frac"><span>∂P₁</span><span>∂A₁[cell]</span></span> = 1 if that cell was the maximum, else 0
+          <div class="note2">nudging the max cell moves the output 1-for-1; nudging a smaller cell doesn't change the max at all → 0.</div></div>
+      </div>
+      <div class="deriv chain">
+        <span class="tag2">Chain rule</span>
+        <div class="ln" data-s="">∂L/∂A₁[cell] = ∂L/∂P₁[win] · (1 at arg-max, else 0) &nbsp;⟹&nbsp; place gᵢ at the winner, 0 elsewhere</div>
+      </div>
+      <div class="mxwrap">
+        <div><div class="mx grad" data-m="dP1"></div><div class="lbl">∂L/∂P₁</div></div>
+        <span class="op">→</span>
+        <div><div class="mx grad" data-m="dA1"></div><div class="lbl">∂L/∂A₁ (rest = 0)</div></div>
+      </div>
+    </div>
+
+    <!-- STEP 7 -->
+    <div class="bp-step" data-bp="6">
+      <h3><span class="step-badge">Step 7</span> A₁ → Z₁ &nbsp;(ReLU) <span class="shape">4×4 → 4×4</span></h3>
+      <div class="deriv">
+        <span class="tag2">Forward &amp; local derivative</span>
+        <div class="ln" data-s="a">A₁ = max(0, Z₁)</div>
+        <div class="ln" data-s="b"><span class="frac"><span>∂A₁</span><span>∂Z₁</span></span> = 1 if Z₁ &gt; 0 &nbsp;(then A₁ = Z₁, slope 1) &nbsp;;&nbsp; = 0 if Z₁ ≤ 0 &nbsp;(then A₁ = 0, slope 0)</div>
+      </div>
+      <div class="deriv chain">
+        <span class="tag2">Chain rule</span>
+        <div class="ln" data-s=""><span class="frac"><span>∂L</span><span>∂Z₁</span></span> = <span class="frac"><span>∂L</span><span>∂A₁</span></span> · <span class="frac"><span>∂A₁</span><span>∂Z₁</span></span> = ∂L/∂A₁ ⊙ [Z₁ &gt; 0] &nbsp;<span class="note2" style="display:inline">(⊙ = element-wise ×)</span></div>
+      </div>
+      <div class="mxwrap">
+        <div><div class="mx grad" data-m="dA1"></div><div class="lbl">∂L/∂A₁</div></div>
+        <span class="op">⊙</span>
+        <div><div class="mx mask" data-m="relumask"></div><div class="lbl">[Z₁&gt;0]</div></div>
+        <span class="op">→</span>
+        <div><div class="mx grad" data-m="dZ1"></div><div class="lbl">∂L/∂Z₁ (g₁ blocked)</div></div>
+      </div>
+    </div>
+
+    <!-- STEP 8 -->
+    <div class="bp-step" data-bp="7">
+      <h3><span class="step-badge" style="background:linear-gradient(135deg,#f97316,#fbbf24)">Step 8 · conv</span> Z₁ → W₁, b₁ <span class="shape">→ 3×3 &amp; 1×1</span></h3>
+      <div class="deriv">
+        <span class="tag2">Forward (one output cell, written out)</span>
+        <div class="ln" data-s="">Z₁[i,j] = Σ<sub>m,n</sub> W₁[m,n]·X[i+m, j+n] + b₁</div>
+      </div>
+      <div class="deriv">
+        <span class="tag2">Local derivatives</span>
+        <div class="ln" data-s="a"><span class="frac"><span>∂Z₁[i,j]</span><span>∂W₁[m,n]</span></span> = X[i+m, j+n]
+          <div class="note2">the weight W₁[m,n] is multiplied by exactly that input pixel.</div></div>
+        <div class="ln" data-s="b"><span class="frac"><span>∂Z₁[i,j]</span><span>∂b₁</span></span> = 1</div>
+      </div>
+      <div class="deriv chain">
+        <span class="tag2">Chain rule — sum over every output cell (i,j), because W₁ affects all of them)</span>
+        <div class="ln" data-s=""><span class="frac"><span>∂L</span><span>∂W₁[m,n]</span></span> = Σ<sub>i,j</sub> <span class="frac"><span>∂L</span><span>∂Z₁[i,j]</span></span> · X[i+m,j+n] = conv( X , ∂L/∂Z₁ )</div>
+        <div class="ln" data-s=""><span class="frac"><span>∂L</span><span>∂b₁</span></span> = Σ<sub>i,j</sub> <span class="frac"><span>∂L</span><span>∂Z₁[i,j]</span></span> · 1 = sum of all cells of ∂L/∂Z₁</div>
+      </div>
+      <div class="mxwrap">
+        <div><div class="mx fwd" data-m="Xsym"></div><div class="lbl">X (6×6)</div></div>
+        <span class="op">✳</span>
+        <div><div class="mx grad" data-m="dZ1"></div><div class="lbl">∂L/∂Z₁ (4×4)</div></div>
+        <span class="op">→</span>
+        <div><div class="mx grad" data-m="dW1"></div><div class="lbl">∂L/∂W₁ (3×3)</div></div>
+      </div>
+      <div class="simple"><b>Matrix transform:</b> 6×6 ✳ 4×4 → 3×3 — exactly the filter's shape, per the golden rule.</div>
+    </div>
+
+  </div>
+
+  <!-- 3. UPDATE -->
+  <h2><span class="n">3</span>Update every weight (same rule for all 15)</h2>
+  <div class="panel">
+    <div class="eq" style="text-align:center;font-size:19px">
+      <span class="box" style="padding:10px 18px">θ<sub>new</sub> = θ − η · <span class="frac"><span>∂L</span><span>∂θ</span></span></span>
+    </div>
+    <p class="why" style="text-align:center">Applied element-wise to W₁, b₁, W₂, b₂ (each gradient has the same shape as its weight). η is the learning rate.</p>
+  </div>
+
+  <!-- 4. SUMMARY -->
+  <h2><span class="n">4</span>Every local derivative in one table</h2>
+  <div class="panel">
+    <table>
+      <tr><th>Step</th><th>Local derivative</th><th>Result (derived above)</th><th>Chain rule</th></tr>
+      <tr><td>1 · BCE</td><td>∂L/∂A₂</td><td>(A₂−y)/(A₂(1−A₂))</td><td>start</td></tr>
+      <tr><td>2 · sigmoid</td><td>∂A₂/∂Z₂</td><td>A₂(1−A₂)</td><td>× ⇒ δ = A₂−y</td></tr>
+      <tr><td>3 · dense w</td><td>∂Z₂/∂w₂ⱼ</td><td>fⱼ</td><td>δ·Fᵀ</td></tr>
+      <tr><td>3 · dense b</td><td>∂Z₂/∂b₂</td><td>1</td><td>δ</td></tr>
+      <tr><td>4 · dense in</td><td>∂Z₂/∂fⱼ</td><td>w₂ⱼ</td><td>δ·W₂ᵀ</td></tr>
+      <tr><td>5 · flatten</td><td>∂F/∂P₁</td><td>1 (identity)</td><td>reshape</td></tr>
+      <tr><td>6 · max-pool</td><td>∂P₁/∂A₁</td><td>1 at arg-max, else 0</td><td>route</td></tr>
+      <tr><td>7 · ReLU</td><td>∂A₁/∂Z₁</td><td>1 if Z₁&gt;0 else 0</td><td>⊙ mask</td></tr>
+      <tr><td>8 · conv w</td><td>∂Z₁/∂W₁</td><td>X[i+m,j+n]</td><td>conv(X, ∂L/∂Z₁)</td></tr>
+      <tr><td>8 · conv b</td><td>∂Z₁/∂b₁</td><td>1</td><td>Σ ∂L/∂Z₁</td></tr>
+    </table>
+    <div class="note"><b>Why no ∂L/∂X?</b> X is the input image, not a trainable weight — so the chain stops at the filter W₁.</div>
+  </div>
+
+  <div class="foot">
+    Symbols: δ = A₂−y is the output error · g₁…g₄ are the four gradient values flowing back ·
+    forward in <b class="f">blue</b>, gradients in <b class="g">red</b>.<br>
+    Same steps with real numbers: <code>backprop_from_scratch.py</code> (verified vs TensorFlow autograd).
+  </div>
+</div>
+
+<script>
+const LM = {
+  dW2:[["δf₁","δf₂","δf₃","δf₄"]],
+  dFcol:[["g₁"],["g₂"],["g₃"],["g₄"]],
+  dP1:[["g₁","g₂"],["g₃","g₄"]],
+  dA1:[["g₁","0","g₂","0"],["0","0","0","0"],["g₃","0","0","0"],["0","0","0","g₄"]],
+  relumask:[["0","0","1","0"],["0","0","0","1"],["1","0","0","0"],["0","0","0","1"]],
+  dZ1:[["0","0","g₂","0"],["0","0","0","0"],["g₃","0","0","0"],["0","0","0","g₄"]],
+  dW1:[["•","•","•"],["•","•","•"],["•","•","•"]],
+  Xsym:Array.from({length:6},()=>Array.from({length:6},()=>"x"))
+};
+function renderLabel(el){
+  const m=LM[el.dataset.m]; if(!m) return;
+  el.style.gridTemplateColumns=`repeat(${m[0].length},auto)`;
+  let k=0,html="";
+  for(const row of m) for(const v of row){
+    let cls="c"; if(v==="0") cls+=" zero"; else if(v==="1") cls+=" one";
+    html+=`<div class="${cls}" style="animation-delay:${k*18}ms">${v}</div>`; k++;
+  }
+  el.innerHTML=html;
+}
+document.querySelectorAll(".mx[data-m]").forEach(renderLabel);
+
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add("in")}),{threshold:.12});
+document.querySelectorAll(".reveal").forEach(el=>io.observe(el));
+
+const stages=[{t:"X"},{t:"Z₁"},{t:"A₁"},{t:"P₁"},{t:"F"},{t:"Z₂"},{t:"A₂"},{t:"L"}];
+const pipe=document.getElementById("pipe");
+stages.forEach((s,i)=>{
+  const n=document.createElement("span"); n.className="node f"; n.textContent=s.t; pipe.appendChild(n);
+  if(i<stages.length-1){const a=document.createElement("span");a.className="parr";a.textContent="→";pipe.appendChild(a);}
+});
+const nodes=[...document.querySelectorAll(".node")];
+function setNode(i){nodes.forEach(n=>n.classList.remove("on","g"));
+  if(i>=0){nodes[i].classList.add("on","g");nodes[i].classList.remove("f");}}
+let timer=null;
+function clearAll(){ if(timer){clearInterval(timer);timer=null;}
+  document.querySelectorAll(".bp-step").forEach(s=>s.classList.remove("firing"));
+  nodes.forEach(n=>{n.classList.remove("on","g");n.classList.add("f");}); }
+function resetAnim(){clearAll(); setNode(-1);}
+function playBackward(){ clearAll();
+  const steps=[...document.querySelectorAll(".bp-step")];
+  const nodeFor=[6,5,5,4,3,2,1,1];
+  let i=0; document.getElementById("bpsteps").scrollIntoView({behavior:"smooth",block:"start"});
+  timer=setInterval(()=>{ if(i>=steps.length){clearInterval(timer);timer=null;return;}
+    steps.forEach(s=>s.classList.remove("firing"));
+    const s=steps[i]; s.classList.add("firing","shown"); setNode(nodeFor[i]);
+    s.scrollIntoView({behavior:"smooth",block:"center"}); i++;
+  },1700);
+}
+const io2=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add("shown")}),{threshold:.18});
+document.querySelectorAll(".bp-step").forEach(el=>io2.observe(el));
+</script>
+</body>
+</html>
