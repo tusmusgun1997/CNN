@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Softmax &amp; Next-Word Prediction — Visualized</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --ink:#e9eef8; --muted:#93a2c4; --panel:#111a30cc; --line:#243257;
+    --logit:#8b5cf6; --exp:#f59e0b; --prob:#22d3ee; --ok:#34d399; --true:#34d399; --grad:#fb7185;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;color:var(--ink);font:15px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    background:
+      radial-gradient(1100px 550px at 8% -8%,#132145 0,transparent 60%),
+      radial-gradient(900px 500px at 100% 0,#2a1440 0,transparent 55%),
+      linear-gradient(180deg,var(--bg),#070a13 90%);
+    background-attachment:fixed;min-height:100vh}
+  .wrap{max-width:1020px;margin:0 auto;padding:26px 18px 90px}
+  code{background:#0e1730;padding:2px 6px;border-radius:6px;color:#ffd9a8;font-size:13px}
+
+  .hero{text-align:center;padding:34px 16px 22px;border-radius:22px;overflow:hidden;
+    background:linear-gradient(120deg,#0f1a38,#0d1428 55%,#1c1140);border:1px solid var(--line);box-shadow:0 20px 60px #0009}
+  .hero h1{margin:0;font-size:clamp(24px,4.6vw,40px);font-weight:800;
+    background:linear-gradient(90deg,#7dd3fc,#a78bfa,#fca5a5,#fbbf24,#7dd3fc);background-size:300% 100%;
+    -webkit-background-clip:text;background-clip:text;color:transparent;animation:shim 8s linear infinite}
+  @keyframes shim{to{background-position:300% 0}}
+  .hero p{color:var(--muted);max-width:700px;margin:11px auto 0;font-size:15.5px}
+  .badges{margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .badge{padding:5px 12px;border-radius:999px;font-size:12px;border:1px solid var(--line);background:#101c3a;color:#cfe0ff}
+
+  h2{font-size:22px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .n{font-size:13px;color:#0a0e1a;background:linear-gradient(135deg,#7dd3fc,#a78bfa);width:26px;height:26px;
+    border-radius:8px;display:grid;place-items:center;font-weight:800}
+  .lead{color:var(--muted);max-width:880px;margin:0 0 10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:12px;
+    backdrop-filter:blur(6px);box-shadow:0 12px 36px #0006}
+
+  .eq{text-align:center;font-size:18px;margin:6px 0 12px}
+  .frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle;margin:0 4px}
+  .frac>span:first-child{border-bottom:1.7px solid currentColor;padding:0 8px}
+  .frac>span:last-child{padding:3px 8px 0}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-weight:800;font-size:12.5px}
+  .p-logit{background:var(--logit);color:#0a0e1a}.p-exp{background:var(--exp);color:#1a0a0a}
+  .p-prob{background:var(--prob);color:#04121c}.p-true{background:var(--true);color:#04121c}
+
+  /* pipeline */
+  .pipe{display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap;font-size:13px}
+  .pstep{padding:8px 12px;border-radius:11px;background:#0f1830;border:1px solid var(--line);text-align:center;font-weight:700}
+  .pstep small{display:block;color:var(--muted);font-weight:500;font-size:11px;margin-top:2px}
+  .parr{color:#38bdf8;font-size:18px}
+
+  /* section 1 playground rows */
+  .rows{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+  .srow{display:grid;grid-template-columns:70px 150px 1fr 1fr;gap:12px;align-items:center}
+  @media(max-width:720px){.srow{grid-template-columns:60px 1fr;gap:6px}}
+  .wname{font-weight:800;font-size:14px}
+  input[type=range]{width:100%;accent-color:var(--logit)}
+  .bar{height:26px;border-radius:7px;position:relative;background:#0d1730;overflow:hidden;border:1px solid var(--line)}
+  .bar .fill{position:absolute;left:0;top:0;bottom:0;min-width:4px;border-radius:7px;transition:width .5s cubic-bezier(.3,.7,.3,1)}
+  .bar.exp .fill{background:linear-gradient(90deg,#b45309,#f59e0b)}
+  .bar.prob .fill{background:linear-gradient(90deg,#0e7490,#22d3ee)}
+  .barval{position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2;font-size:12px;font-weight:800;color:#e9eef8;text-shadow:0 1px 3px #000c}
+  .collab{font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:2px}
+  .sumline{text-align:center;margin-top:12px;font-size:14px;color:#a7f3d0;font-weight:700}
+
+  .ctl{display:flex;gap:8px;justify-content:center;margin:12px 0 4px;flex-wrap:wrap}
+  button{font:inherit;font-size:13.5px;font-weight:700;padding:9px 15px;border-radius:10px;border:1px solid var(--line);
+    background:#132043;color:var(--ink);cursor:pointer;transition:.2s}
+  button:hover{transform:translateY(-2px);border-color:#3b5bce}
+  button.go{background:linear-gradient(135deg,#fb7185,#f59e0b);color:#1a0a0a;border:0}
+  button.go2{background:linear-gradient(135deg,#22d3ee,#0ea5e9);color:#04121c;border:0}
+  button:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+  /* vocab distribution */
+  .vrow{display:grid;grid-template-columns:78px 54px 1fr;gap:10px;align-items:center;margin:7px 0}
+  .vrow .wname{position:relative}
+  .vbar{height:30px;border-radius:8px;background:#0d1730;border:1px solid var(--line);position:relative;overflow:hidden}
+  .vbar .vfill{position:absolute;left:0;top:0;bottom:0;min-width:4px;border-radius:8px;background:linear-gradient(90deg,#0e7490,#22d3ee);transition:width .55s cubic-bezier(.3,.7,.3,1)}
+  .vbar.istrue .vfill{background:linear-gradient(90deg,#15803d,#34d399)}
+  .vrow.winner .vbar{outline:2px solid #fbbf24;outline-offset:1px}
+  .pct{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:2;font-size:12.5px;font-weight:800;color:#eafff5;text-shadow:0 1px 3px #000c}
+  .logitbadge{font-size:12px;font-weight:800;color:#c4b5fd;text-align:right}
+  .grad-arrow{font-size:14px;font-weight:800;margin-left:6px}
+  .up{color:#34d399}.down{color:#fb7185}
+  .tag{display:inline-block;margin-left:6px;font-size:10px;font-weight:800;padding:1px 7px;border-radius:999px}
+  .tag.true{background:var(--true);color:#04121c}.tag.win{background:#fbbf24;color:#1a0a0a}
+
+  .stat{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin:12px 0 4px}
+  .statbox{text-align:center;background:#0f1830;border:1px solid var(--line);border-radius:12px;padding:10px 18px;min-width:120px}
+  .statbox b{display:block;font-size:22px;margin-top:2px}
+  .lossc{color:#fca5a5}.probc{color:#6ee7b7}
+  .curve{display:block;margin:8px auto 0}
+  .simple{color:#cbd5f5;font-size:13.5px;margin:10px 0 0;padding:9px 12px;border-left:3px solid var(--ok);background:#0f1c22;border-radius:0 8px 8px 0}
+  .note{background:#0f1c22;border-left:3px solid #38bdf8;border-radius:0 10px 10px 0;padding:11px 14px;color:#cbd5f5;font-size:13.5px;margin-top:12px}
+  .ctxt{text-align:center;font-size:16px;margin:4px 0 10px}
+  .ctxt b{color:#7dd3fc}
+  .foot{margin-top:52px;color:var(--muted);font-size:13px;text-align:center;border-top:1px solid #1f2b49;padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>Softmax &amp; Next-Word Prediction</h1>
+    <p>What softmax actually computes, why the output is a <b>probability over the whole
+       vocabulary</b>, and exactly what backprop changes when an RNN/LSTM learns to predict
+       the next word.</p>
+    <div class="badges">
+      <span class="badge">interactive sliders</span>
+      <span class="badge">live probabilities</span>
+      <span class="badge">watch training happen</span>
+    </div>
+  </header>
+
+  <!-- PIPELINE -->
+  <div class="panel">
+    <div class="pipe">
+      <div class="pstep">context<small>"the cat sat on the"</small></div><span class="parr">→</span>
+      <div class="pstep">LSTM<small>hidden state h</small></div><span class="parr">→</span>
+      <div class="pstep" style="border-color:var(--logit)">Dense(V)<small>logits (1 per word)</small></div><span class="parr">→</span>
+      <div class="pstep" style="border-color:var(--prob)">softmax<small>→ probabilities</small></div><span class="parr">→</span>
+      <div class="pstep" style="border-color:var(--true)">pick word<small>"mat"</small></div>
+    </div>
+    <div class="note">Softmax is the <b>last step</b>: the LSTM turns the context into a hidden
+      state <code>h</code>, a Dense layer turns <code>h</code> into one raw score (<b class="p-logit" style="padding:0 6px">logit</b>)
+      per vocabulary word, and <b>softmax turns those scores into probabilities</b>.</div>
+  </div>
+
+  <!-- 1. WHAT IS SOFTMAX -->
+  <h2><span class="n">1</span>What softmax does — scores → probabilities</h2>
+  <p class="lead">Softmax takes any list of raw scores (they can be negative, huge, tiny) and
+     squashes them into <b>positive numbers that add up to 1</b> — a probability distribution.
+     Drag the sliders and watch it work.</p>
+  <div class="panel">
+    <div class="eq">
+      softmax(z)<sub>i</sub> =
+      <span class="frac"><span>e<sup>z<sub>i</sub></sup></span><span>Σ<sub>j</sub> e<sup>z<sub>j</sub></sup></span></span>
+      <span style="color:var(--muted);font-size:13px">&nbsp;— exponentiate each score, then divide by the total</span>
+    </div>
+    <div class="srow" style="color:var(--muted);font-size:12px;border-bottom:1px solid var(--line);padding-bottom:4px">
+      <div>word</div><div>logit z (slide)</div><div class="collab"><span class="p-exp">e<sup>z</sup></span> (always positive)</div><div class="collab"><span class="p-prob">probability</span> (sum = 1)</div>
+    </div>
+    <div class="rows" id="play"></div>
+    <div class="sumline" id="playsum"></div>
+    <div class="simple"><b>The 3 steps:</b> ① a logit can be any number ② <b>e<sup>z</sup></b> makes it
+      positive and blows up big scores ③ dividing by the total <b>normalizes</b> everything to add to 1.
+      Bigger logit → bigger share of the probability. (Tip: raising one slider steals probability from the others.)</div>
+  </div>
+
+  <!-- 2. PROBABILITY OF WHAT -->
+  <h2><span class="n">2</span>Probability of <i>what?</i> — the next word</h2>
+  <p class="lead">In next-word prediction there is <b>one logit per word in the vocabulary</b>. Softmax
+     turns them into <b>P(word is next)</b> for every word. They sum to 1, and the model’s prediction is
+     the <b>highest-probability</b> word (⭐).</p>
+  <div class="panel">
+    <div class="ctxt">context: <b>“the cat sat on the ___”</b></div>
+    <div id="vocab2"></div>
+    <div class="simple" id="pred2"></div>
+    <div class="note">This is the whole answer to “probability of what?”: softmax gives
+      <b>P(next word = mat), P(next word = floor), …</b> across the entire vocabulary. Predicting a word =
+      picking the biggest bar. (7 words here; real models have 30,000–50,000+.)</div>
+  </div>
+
+  <!-- 3. BACKPROP -->
+  <h2><span class="n">3</span>What backprop does when learning the next word</h2>
+  <p class="lead">Suppose the <b>true</b> next word (from the text) is <b style="color:var(--true)">“mat”</b>.
+     Training should make the model assign it a <b>higher</b> probability. Watch it happen — press
+     <b>Take a gradient step</b>.</p>
+  <div class="panel">
+    <div class="eq" style="font-size:16px">
+      loss (cross-entropy) = − ln( P<sub>true word</sub> )
+      &nbsp;&nbsp;•&nbsp;&nbsp;
+      gradient on each logit: <b style="color:var(--grad)">∂L/∂z<sub>i</sub> = p<sub>i</sub> − y<sub>i</sub></b>
+      &nbsp;<span style="color:var(--muted);font-size:12px">(y = 1 for the true word, 0 otherwise)</span>
+    </div>
+    <div class="stat">
+      <div class="statbox">step <b id="stepv">0</b></div>
+      <div class="statbox">P(“mat”) <b class="probc" id="pmatv">–</b></div>
+      <div class="statbox">loss = −ln P <b class="lossc" id="lossv">–</b></div>
+    </div>
+    <svg class="curve" id="losscurve" width="320" height="70" viewBox="0 0 320 70"></svg>
+
+    <div id="vocab3"></div>
+
+    <div class="ctl">
+      <button class="go" onclick="trainStep()">⬆ Take a gradient step</button>
+      <button class="go2" onclick="trainMany()">▶ Train 15 steps</button>
+      <button onclick="resetTrain()">↺ Reset</button>
+    </div>
+    <div class="simple" id="explain3">Before training, the model may rank another word first. The gradient
+      <b>p − y</b> pushes the <b style="color:var(--true)">true word’s</b> logit <b class="up">up</b> and every other
+      logit <b class="down">down</b>, so P(“mat”) rises and the loss falls.</div>
+    <div class="note"><b>Where the gradient goes next:</b> <code>p − y</code> is only the <i>first</i> step of
+      backprop (at the logits). From here it flows back through the Dense layer and then
+      <b>through time into the LSTM/RNN</b> (backprop-through-time) to update Wᵢ, Wₕ, Wₒ and the gates —
+      so next time, given this context, the whole network leans toward “mat”. Here we nudge the logits
+      directly just to <i>see</i> the effect.</div>
+  </div>
+
+  <div class="foot">
+    Companion to <code>00b-predicting-next-word-vs-classifying.md</code> ·
+    softmax(z)<sub>i</sub> = e<sup>z<sub>i</sub></sup> / Σ e<sup>z<sub>j</sub></sup> ·
+    cross-entropy gradient = p − y.
+  </div>
+</div>
+
+<script>
+function softmax(zs){
+  const m = Math.max(...zs);
+  const ex = zs.map(z=>Math.exp(z-m));            // subtract max for numerical stability
+  const s = ex.reduce((a,b)=>a+b,0);
+  return {p:ex.map(e=>e/s), ex, s};
+}
+const pct = x => (x*100).toFixed(1)+"%";
+
+/* ---------------- Section 1: playground ---------------- */
+const P1 = ["mat","dog","sky","car"];
+let z1 = [2.0, 1.0, 0.2, -0.8];
+const playEl = document.getElementById("play");
+P1.forEach((w,i)=>{
+  const row=document.createElement("div"); row.className="srow";
+  row.innerHTML = `
+    <div class="wname">${w}</div>
+    <div><input type="range" min="-4" max="4" step="0.1" value="${z1[i]}" oninput="setZ1(${i}, this.value)">
+         <div style="text-align:center;font-size:12px;color:#c4b5fd;font-weight:800" id="z1v${i}">${z1[i].toFixed(1)}</div></div>
+    <div class="bar exp"><span class="fill" id="e1${i}"></span><span class="barval" id="e1t${i}"></span></div>
+    <div class="bar prob"><span class="fill" id="p1${i}"></span><span class="barval" id="p1t${i}"></span></div>`;
+  playEl.appendChild(row);
+});
+window.setZ1=(i,v)=>{ z1[i]=parseFloat(v); document.getElementById("z1v"+i).textContent=z1[i].toFixed(1); render1(); };
+function render1(){
+  const {p,ex,s}=softmax(z1);
+  const maxe=Math.max(...ex);
+  P1.forEach((w,i)=>{
+    document.getElementById("e1"+i).style.width = (ex[i]/maxe*100)+"%";
+    document.getElementById("e1t"+i).textContent = ex[i].toFixed(2);
+    document.getElementById("p1"+i).style.width = (p[i]*100)+"%";
+    document.getElementById("p1t"+i).textContent = pct(p[i]);
+  });
+  document.getElementById("playsum").innerHTML =
+    `sum of e<sup>z</sup> = ${s.toFixed(2)} &nbsp;→&nbsp; probabilities add to ${(p.reduce((a,b)=>a+b,0)).toFixed(3)} ✓`;
+}
+render1();
+
+/* ---------------- Sections 2 & 3: vocabulary ---------------- */
+const VOCAB = ["mat","floor","roof","sofa","dog","sky","car"];
+const TRUE = 0;                                   // "mat" is the true next word
+const Z0 = [0.8, 2.0, 1.2, 0.3, -0.6, 1.6, 0.1]; // initial logits (floor & sky beat mat)
+let z3 = Z0.slice(), step=0, lossHist=[];
+const LR = 0.7;
+
+function buildVocab(container, interactive){
+  const el=document.getElementById(container); el.innerHTML="";
+  VOCAB.forEach((w,i)=>{
+    const row=document.createElement("div"); row.className="vrow"; row.id=container+"_r"+i;
+    row.innerHTML=`
+      <div class="wname">${w}${i===TRUE?'<span class="tag true">true</span>':''}<span class="tag win" id="${container}_win${i}" style="display:none">⭐</span></div>
+      <div class="logitbadge" id="${container}_z${i}"></div>
+      <div class="vbar ${i===TRUE?'istrue':''}"><span class="vfill" id="${container}_b${i}"></span><span class="pct" id="${container}_p${i}"></span>
+        ${interactive?`<span class="grad-arrow" id="${container}_g${i}" style="position:absolute;right:58px;top:50%;transform:translateY(-50%);z-index:2"></span>`:''}</div>`;
+    el.appendChild(row);
+  });
+}
+function renderVocab(container, z, showGrad){
+  const {p}=softmax(z);
+  const win = p.indexOf(Math.max(...p));
+  VOCAB.forEach((w,i)=>{
+    document.getElementById(container+"_b"+i).style.width=(p[i]*100)+"%";
+    document.getElementById(container+"_p"+i).textContent=pct(p[i]);
+    document.getElementById(container+"_z"+i).textContent="z="+z[i].toFixed(2);
+    document.getElementById(container+"_r"+i).classList.toggle("winner", i===win);
+    const wn=document.getElementById(container+"_win"+i); if(wn) wn.style.display = i===win?"inline-block":"none";
+    if(showGrad){
+      const g=document.getElementById(container+"_g"+i); const y=(i===TRUE?1:0); const grad=p[i]-y;
+      // gradient descent moves logit by -LR*grad → true word (grad<0) goes up
+      g.textContent = grad<0? "▲" : "▼";
+      g.className = "grad-arrow " + (grad<0?"up":"down");
+    }
+  });
+  return {p, win};
+}
+
+buildVocab("vocab2", false);
+const r2 = renderVocab("vocab2", Z0, false);
+document.getElementById("pred2").innerHTML =
+  `The bars are a probability distribution over the 7 words (they sum to 1). The model’s prediction is the ⭐ word: <b>“${VOCAB[r2.win]}”</b> at ${pct(r2.p[r2.win])}. Notice each word gets its own P(next = word).`;
+
+/* ---- training ---- */
+const curve=document.getElementById("losscurve");
+function drawCurve(){
+  if(lossHist.length<1){curve.innerHTML="";return;}
+  const maxL=Math.max(...lossHist, 0.1), n=Math.max(lossHist.length-1,1);
+  const pts=lossHist.map((L,i)=>`${10 + i/n*300},${60 - (L/maxL)*50}`).join(" ");
+  curve.innerHTML=`<polyline points="${pts}" fill="none" stroke="#fb7185" stroke-width="2.5"/>`+
+    lossHist.map((L,i)=>`<circle cx="${10+i/n*300}" cy="${60-(L/maxL)*50}" r="2.5" fill="#fca5a5"/>`).join("")+
+    `<text x="6" y="12" fill="#93a2c4" font-size="10">loss</text>`;
+}
+function refreshTrain(){
+  const {p}=softmax(z3);
+  renderVocab("vocab3", z3, true);
+  const loss=-Math.log(p[TRUE]);
+  document.getElementById("stepv").textContent=step;
+  document.getElementById("pmatv").textContent=pct(p[TRUE]);
+  document.getElementById("lossv").textContent=loss.toFixed(3);
+  drawCurve();
+  const win=p.indexOf(Math.max(...p));
+  document.getElementById("explain3").innerHTML = win===TRUE
+    ? `✅ The model now ranks <b style="color:var(--true)">“mat”</b> highest (P=${pct(p[TRUE])}). The gradient p−y keeps nudging until the true word wins and the loss approaches 0.`
+    : `Currently ranks <b>“${VOCAB[win]}”</b> first. The gradient pushes <b style="color:var(--true)">“mat”</b> <b class="up">up ▲</b> and others <b class="down">down ▼</b>. Keep stepping.`;
+}
+window.trainStep=()=>{
+  const {p}=softmax(z3);
+  for(let i=0;i<z3.length;i++){ const y=(i===TRUE?1:0); z3[i] -= LR*(p[i]-y); }  // gradient descent
+  step++; lossHist.push(-Math.log(softmax(z3).p[TRUE])); refreshTrain();
+};
+let tt=null;
+window.trainMany=()=>{ if(tt)return; let k=0; tt=setInterval(()=>{ trainStep(); if(++k>=15){clearInterval(tt);tt=null;} },260); };
+window.resetTrain=()=>{ if(tt){clearInterval(tt);tt=null;} z3=Z0.slice(); step=0; lossHist=[-Math.log(softmax(Z0).p[TRUE])]; refreshTrain(); };
+
+buildVocab("vocab3", true);
+lossHist=[-Math.log(softmax(Z0).p[TRUE])];
+refreshTrain();
+</script>
+</body>
+</html>

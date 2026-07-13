@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backpropagation Through Time — Animated (3-word input, 3 levels)</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --ink:#e9eef8; --muted:#93a2c4; --panel:#111a30cc; --line:#243257;
+    --fwd:#38bdf8; --ok:#34d399;
+    --wo:#a855f7; --wi:#f59e0b; --wh:#fb7185;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;color:var(--ink);font:15px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    background:
+      radial-gradient(1100px 550px at 8% -8%,#132145 0,transparent 60%),
+      radial-gradient(900px 500px at 100% 0,#2a1440 0,transparent 55%),
+      linear-gradient(180deg,var(--bg),#070a13 90%);
+    background-attachment:fixed;min-height:100vh}
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 18px 90px}
+  code{background:#0e1730;padding:2px 6px;border-radius:6px;color:#ffd9a8;font-size:13px}
+
+  .hero{text-align:center;padding:34px 16px 22px;border-radius:22px;overflow:hidden;
+    background:linear-gradient(120deg,#0f1a38,#0d1428 55%,#1c1140);border:1px solid var(--line);box-shadow:0 20px 60px #0009}
+  .hero h1{margin:0;font-size:clamp(24px,4.6vw,40px);font-weight:800;
+    background:linear-gradient(90deg,#7dd3fc,#a78bfa,#fca5a5,#fbbf24,#7dd3fc);background-size:300% 100%;
+    -webkit-background-clip:text;background-clip:text;color:transparent;animation:shim 8s linear infinite}
+  @keyframes shim{to{background-position:300% 0}}
+  .hero p{color:var(--muted);max-width:700px;margin:11px auto 0;font-size:15.5px}
+  .badges{margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .badge{padding:5px 12px;border-radius:999px;font-size:12px;border:1px solid var(--line);background:#101c3a;color:#cfe0ff}
+
+  h2{font-size:22px;margin:44px 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .n{font-size:13px;color:#0a0e1a;background:linear-gradient(135deg,#7dd3fc,#a78bfa);width:26px;height:26px;
+    border-radius:8px;display:grid;place-items:center;font-weight:800}
+  .lead{color:var(--muted);max-width:860px;margin:0 0 10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:12px;
+    backdrop-filter:blur(6px);box-shadow:0 12px 36px #0006}
+
+  .ctl{display:flex;gap:8px;justify-content:center;margin:6px 0;flex-wrap:wrap}
+  button{font:inherit;font-size:13.5px;font-weight:700;padding:9px 15px;border-radius:10px;border:1px solid var(--line);
+    background:#132043;color:var(--ink);cursor:pointer;transition:.2s}
+  button:hover{transform:translateY(-2px);border-color:#3b5bce}
+  button.fwd{background:linear-gradient(135deg,#0ea5e9,#22d3ee);color:#04121c;border:0}
+  button.sel{border-radius:999px}
+  button.sel.wo.on{background:var(--wo);color:#0a0e1a;border:0}
+  button.sel.wi.on{background:var(--wi);color:#1a0a0a;border:0}
+  button.sel.wh.on{background:var(--wh);color:#1a0a0a;border:0}
+  button:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+  /* svg diagram */
+  svg{display:block;width:100%}
+  svg text{font-family:inherit;fill:#cbd5f5}
+  .cell{fill:#101c3a;stroke:#3b5bce;stroke-width:2}
+  .node{fill:#0f1830;stroke:#5f6f96;stroke-width:2}
+  .node.o{stroke:#fb7185}
+  .nlbl{font-size:13px;font-weight:800;fill:#e9eef8}
+  .slbl{font-size:12px;fill:#8fa3cc}
+  .edge{stroke:#2c3a5f;stroke-width:3;fill:none}
+  .edge.dim{opacity:.5}
+  .edge.hot{stroke:var(--hot);stroke-width:5;stroke-dasharray:9 7;animation:dash .8s linear infinite}
+  .edge.target{stroke:var(--ok)!important;stroke-width:5.5;filter:drop-shadow(0 0 7px #34d39988);stroke-dasharray:none;animation:none}
+  .edge.fwd{stroke:var(--fwd);stroke-width:4.5;stroke-dasharray:9 7;animation:dashf .8s linear infinite}
+  @keyframes dash{to{stroke-dashoffset:32}}
+  @keyframes dashf{to{stroke-dashoffset:-32}}
+  .cellflash{animation:cf .8s}
+  @keyframes cf{40%{fill:#22325f;stroke:#7dd3fc}}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:6px;font-size:12.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .sw{width:24px;height:5px;border-radius:3px;display:inline-block}
+
+  .statusbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .lvlpill{font-size:13px;font-weight:800;padding:5px 12px;border-radius:999px;background:#132043;border:1px solid var(--line)}
+  .status{color:#cbd5f5;font-size:13.5px;flex:1;min-width:220px}
+
+  /* chain-rule builder */
+  .builder{min-height:60px}
+  .termrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;margin-top:10px;
+    background:#0d1526;border:1px solid var(--line);animation:rise .5s both}
+  @keyframes rise{from{opacity:0;transform:translateY(12px)}}
+  .plus{font-size:22px;color:var(--muted);font-weight:800;margin:0 2px}
+  .tlbl{font-size:12px;font-weight:800;color:#0a0e1a;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .route{color:var(--muted);font-size:12px}
+  .frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle;margin:0 2px;font-size:15px}
+  .frac>span:first-child{border-bottom:1.6px solid currentColor;padding:0 6px}
+  .frac>span:last-child{padding:2px 6px 0}
+  .collapse{margin-top:14px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,#0d2b21,#10261f);
+    border:1px solid #1f6b52;font-size:16px;font-weight:700;color:#a7f3d0;animation:rise .5s both}
+  .eqnote{color:var(--muted);font-size:13px;margin-top:8px}
+
+  /* forward eq + locals */
+  .eqbox{font-size:15px;line-height:2.1}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13.5px}
+  th,td{padding:8px 10px;border-bottom:1px solid #1f2b49;text-align:left}
+  th{color:#bcd0ff} tr:hover td{background:#101c38}
+  .foot{margin-top:52px;color:var(--muted);font-size:13px;text-align:center;border-top:1px solid #1f2b49;padding-top:16px}
+  .note{background:#0f1c22;border-left:3px solid var(--fwd);border-radius:0 10px 10px 0;padding:11px 14px;color:#cbd5f5;font-size:13.5px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>Backpropagation Through Time</h1>
+    <p>A 3-word input has 3 time steps — so the shared weights Wᵢ and Wₕ get <b>three
+       levels of differentiation</b>, one summed path per step. Watch each path flow back.</p>
+    <div class="badges">
+      <span class="badge">3 words → 3 levels</span>
+      <span class="badge">shared weights = summed gradient</span>
+      <span class="badge">chain rule built live</span>
+    </div>
+  </header>
+
+  <!-- STAGE -->
+  <h2><span class="n">1</span>The unrolled network</h2>
+  <p class="lead">Forward flow builds O₁→O₂→O₃→ŷ→L. Pick a weight below to back-propagate: each
+     <b>level</b> lights up its route back through the network, and the chain-rule term for that
+     level is added to the sum. The <b style="color:var(--ok)">green</b> edge is where the path
+     finally reaches the weight.</p>
+
+  <div class="panel">
+    <div class="ctl">
+      <button class="fwd" onclick="playForward()">▶ Forward pass</button>
+      <button class="sel wo" id="bWo" onclick="pick('Wo')">∂L/∂Wₒ &nbsp;(1 level)</button>
+      <button class="sel wi on" id="bWi" onclick="pick('Wi')">∂L/∂Wᵢ &nbsp;(3 levels)</button>
+      <button class="sel wh" id="bWh" onclick="pick('Wh')">∂L/∂Wₕ &nbsp;(3 levels)</button>
+    </div>
+    <div class="ctl">
+      <button id="stepBtn" onclick="stepLevel()">⏭ Next level</button>
+      <button onclick="playLevels()">▶ Play all levels</button>
+      <button onclick="resetGrad()">↺ Reset</button>
+    </div>
+
+    <svg viewBox="0 0 940 360" role="img">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="#7f8db0"/></marker>
+      </defs>
+
+      <!-- edges (drawn first, under nodes) -->
+      <!-- Wh (recurrent) edges: O_{t-1} -> cell_t -->
+      <path id="eh1" class="edge" marker-end="url(#a)" d="M 82 186 L 138 186"/>
+      <path id="eh2" class="edge" marker-end="url(#a)" d="M 318 186 L 378 186"/>
+      <path id="eh3" class="edge" marker-end="url(#a)" d="M 558 186 L 618 186"/>
+      <!-- cell -> O edges -->
+      <path id="ec1" class="edge" marker-end="url(#a)" d="M 216 186 L 282 186"/>
+      <path id="ec2" class="edge" marker-end="url(#a)" d="M 456 186 L 522 186"/>
+      <path id="ec3" class="edge" marker-end="url(#a)" d="M 696 186 L 740 186"/>
+      <!-- Wi (input) edges: x_t -> cell_t (bottom up) -->
+      <path id="ex1" class="edge" marker-end="url(#a)" d="M 177 306 L 177 218"/>
+      <path id="ex2" class="edge" marker-end="url(#a)" d="M 417 306 L 417 218"/>
+      <path id="ex3" class="edge" marker-end="url(#a)" d="M 657 306 L 657 218"/>
+      <!-- output edges -->
+      <path id="eo" class="edge" marker-end="url(#a)" d="M 772 178 L 840 130"/>
+      <path id="el" class="edge" marker-end="url(#a)" d="M 858 98 L 858 66"/>
+
+      <!-- cells -->
+      <rect class="cell" id="c1" x="140" y="158" width="76" height="56" rx="12"/>
+      <rect class="cell" id="c2" x="380" y="158" width="76" height="56" rx="12"/>
+      <rect class="cell" id="c3" x="620" y="158" width="76" height="56" rx="12"/>
+      <text x="178" y="191" text-anchor="middle" class="nlbl" style="font-size:14px">f</text>
+      <text x="418" y="191" text-anchor="middle" class="nlbl" style="font-size:14px">f</text>
+      <text x="658" y="191" text-anchor="middle" class="nlbl" style="font-size:14px">f</text>
+
+      <!-- hidden state nodes -->
+      <circle class="node" cx="64"  cy="186" r="17"/><text x="64"  y="191" text-anchor="middle" class="nlbl">O₀</text>
+      <circle class="node" cx="300" cy="186" r="17"/><text x="300" y="191" text-anchor="middle" class="nlbl">O₁</text>
+      <circle class="node" cx="540" cy="186" r="17"/><text x="540" y="191" text-anchor="middle" class="nlbl">O₂</text>
+      <circle class="node" cx="758" cy="186" r="17"/><text x="758" y="191" text-anchor="middle" class="nlbl">O₃</text>
+
+      <!-- output head -->
+      <circle class="node o" cx="858" cy="116" r="18"/><text x="858" y="121" text-anchor="middle" class="nlbl">ŷ</text>
+      <rect class="node o" x="840" y="30" width="36" height="34" rx="9"/><text x="858" y="52" text-anchor="middle" class="nlbl">L</text>
+
+      <!-- inputs -->
+      <circle class="node" cx="177" cy="322" r="15"/><text x="177" y="327" text-anchor="middle" class="slbl" style="font-size:11px">xᵢ₁</text>
+      <circle class="node" cx="417" cy="322" r="15"/><text x="417" y="327" text-anchor="middle" class="slbl" style="font-size:11px">xᵢ₂</text>
+      <circle class="node" cx="657" cy="322" r="15"/><text x="657" y="327" text-anchor="middle" class="slbl" style="font-size:11px">xᵢ₃</text>
+
+      <!-- weight labels -->
+      <text x="108" y="176" class="slbl">Wₕ</text>
+      <text x="344" y="176" class="slbl">Wₕ</text>
+      <text x="584" y="176" class="slbl">Wₕ</text>
+      <text x="188" y="268" class="slbl">Wᵢ</text>
+      <text x="428" y="268" class="slbl">Wᵢ</text>
+      <text x="668" y="268" class="slbl">Wᵢ</text>
+      <text x="792" y="150" class="slbl">Wₒ</text>
+    </svg>
+
+    <div class="legend">
+      <span><i class="sw" style="background:var(--fwd)"></i> forward pass</span>
+      <span><i class="sw" id="lg-hot" style="background:var(--wi)"></i> active gradient path</span>
+      <span><i class="sw" style="background:var(--ok)"></i> reaches the weight</span>
+    </div>
+    <div class="statusbar">
+      <span class="lvlpill" id="lvlpill">∂L/∂Wᵢ — pick “Next level”</span>
+      <span class="status" id="status">Wᵢ is shared across all 3 steps, so its gradient sums 3 paths. Press <b>Next level</b>.</span>
+    </div>
+  </div>
+
+  <!-- BUILDER -->
+  <h2><span class="n">2</span>The chain rule, built term by term</h2>
+  <div class="panel">
+    <div class="builder" id="builder"><div style="color:var(--muted)">Select a weight and step through the levels — each term appears here.</div></div>
+  </div>
+
+  <!-- REFERENCE -->
+  <h2><span class="n">3</span>Forward equations &amp; local derivatives</h2>
+  <div class="panel">
+    <div class="eqbox">
+      O₁ = f( xᵢ₁·Wᵢ + O₀·Wₕ ) &nbsp;•&nbsp; O₂ = f( xᵢ₂·Wᵢ + O₁·Wₕ ) &nbsp;•&nbsp; O₃ = f( xᵢ₃·Wᵢ + O₂·Wₕ )<br>
+      ŷ = g( O₃·Wₒ ) &nbsp;•&nbsp; L = loss(ŷ, y) &nbsp;•&nbsp; write aₜ = xᵢₜ·Wᵢ + Oₜ₋₁·Wₕ so Oₜ = f(aₜ)
+    </div>
+    <table>
+      <tr><th>Local term</th><th>Value</th><th>note</th></tr>
+      <tr><td>∂ŷ / ∂O₃</td><td>g′(O₃Wₒ) · Wₒ</td><td>output head</td></tr>
+      <tr><td>∂Oₜ / ∂Oₜ₋₁</td><td>f′(aₜ) · Wₕ</td><td>the "through time" factor — one per level of depth</td></tr>
+      <tr><td>∂Oₜ / ∂Wᵢ</td><td>f′(aₜ) · xᵢₜ</td><td>direct input effect at step t</td></tr>
+      <tr><td>∂Oₜ / ∂Wₕ</td><td>f′(aₜ) · Oₜ₋₁</td><td>direct recurrent effect at step t</td></tr>
+      <tr><td>f′(aₜ) for tanh</td><td>1 − Oₜ²</td><td>reuse Oₜ from the forward pass</td></tr>
+    </table>
+    <div class="note"><b>Vanishing gradient:</b> level 3 (the earliest step) multiplies <b>two</b>
+      <code>f′·Wₕ</code> factors; over T steps it's T−1 of them. Repeatedly multiplying values &lt; 1
+      shrinks the earliest gradients toward zero — which is exactly why <b>LSTM/GRU</b> exist.</div>
+  </div>
+
+  <div class="foot">
+    Companion to <code>backpropagation-through-time.md</code> · one cell unrolled over 3 time steps ·
+    ∂L/∂Wᵢ = Σ eₜ·xᵢₜ, &nbsp; ∂L/∂Wₕ = Σ eₜ·Oₜ₋₁, &nbsp; ∂L/∂Wₒ = (ŷ−y)·O₃.
+  </div>
+</div>
+
+<script>
+const svg = document.querySelector("svg");
+const COL = {Wo:"#a855f7", Wi:"#f59e0b", Wh:"#fb7185"};
+function F(n,d){return `<span class="frac"><span>${n}</span><span>${d}</span></span>`;}
+
+const GRAD = {
+  Wo:{ name:"∂L/∂Wₒ", tag:"used once",
+    levels:[ {edges:["el","eo"], target:"eo", t:"—",
+      term:[["∂L","∂ŷ"],["∂ŷ","∂Wₒ"]], route:"L → ŷ → Wₒ"} ],
+    collapse:"∂L/∂Wₒ = (ŷ − y) · O₃",
+    note:"Wₒ appears only in ŷ → a single chain, no time unrolling." },
+  Wi:{ name:"∂L/∂Wᵢ", tag:"shared over 3 steps",
+    levels:[
+      {edges:["el","eo","ec3","ex3"], target:"ex3", t:"t = 3",
+        term:[["∂L","∂ŷ"],["∂ŷ","∂O₃"],["∂O₃","∂Wᵢ"]], route:"L → ŷ → O₃ → Wᵢ"},
+      {edges:["el","eo","ec3","eh3","ec2","ex2"], target:"ex2", t:"t = 2",
+        term:[["∂L","∂ŷ"],["∂ŷ","∂O₃"],["∂O₃","∂O₂"],["∂O₂","∂Wᵢ"]], route:"L → ŷ → O₃ → O₂ → Wᵢ"},
+      {edges:["el","eo","ec3","eh3","ec2","eh2","ec1","ex1"], target:"ex1", t:"t = 1",
+        term:[["∂L","∂ŷ"],["∂ŷ","∂O₃"],["∂O₃","∂O₂"],["∂O₂","∂O₁"],["∂O₁","∂Wᵢ"]], route:"L → ŷ → O₃ → O₂ → O₁ → Wᵢ"} ],
+    collapse:"∂L/∂Wᵢ = e₃·xᵢ₃ + e₂·xᵢ₂ + e₁·xᵢ₁ &nbsp;=&nbsp; Σₜ eₜ·xᵢₜ",
+    note:"Wᵢ is used at every step → the gradient is the SUM of all 3 paths." },
+  Wh:{ name:"∂L/∂Wₕ", tag:"shared over 3 steps",
+    levels:[
+      {edges:["el","eo","ec3","eh3"], target:"eh3", t:"t = 3",
+        term:[["∂L","∂ŷ"],["∂ŷ","∂O₃"],["∂O₃","∂Wₕ"]], route:"L → ŷ → O₃ → Wₕ"},
+      {edges:["el","eo","ec3","eh3","ec2","eh2"], target:"eh2", t:"t = 2",
+        term:[["∂L","∂ŷ"],["∂ŷ","∂O₃"],["∂O₃","∂O₂"],["∂O₂","∂Wₕ"]], route:"L → ŷ → O₃ → O₂ → Wₕ"},
+      {edges:["el","eo","ec3","eh3","ec2","eh2","ec1","eh1"], target:"eh1", t:"t = 1",
+        term:[["∂L","∂ŷ"],["∂ŷ","∂O₃"],["∂O₃","∂O₂"],["∂O₂","∂O₁"],["∂O₁","∂Wₕ"]], route:"L → ŷ → O₃ → O₂ → O₁ → Wₕ"} ],
+    collapse:"∂L/∂Wₕ = e₃·O₂ + e₂·O₁ + e₁·O₀ &nbsp;=&nbsp; Σₜ eₜ·Oₜ₋₁",
+    note:"Wₕ is also shared → 3 summed paths; the last factor uses Oₜ₋₁ instead of xᵢₜ." },
+};
+
+let cur="Wi", li=0, timer=null;
+const ALL_EDGES=["eh1","eh2","eh3","ec1","ec2","ec3","ex1","ex2","ex3","eo","el"];
+const cellOf={ec1:"c1",ec2:"c2",ec3:"c3",ex1:"c1",ex2:"c2",ex3:"c3",eh1:"c1",eh2:"c2",eh3:"c3"};
+
+function clearEdges(){ ALL_EDGES.forEach(id=>{const e=document.getElementById(id);e.classList.remove("hot","target","fwd","dim");}); }
+function dimAll(){ ALL_EDGES.forEach(id=>document.getElementById(id).classList.add("dim")); }
+
+function pick(w){
+  cur=w; li=0;
+  ["Wo","Wi","Wh"].forEach(k=>document.getElementById("b"+k).classList.toggle("on",k===w));
+  svg.style.setProperty("--hot", COL[w]);
+  document.getElementById("lg-hot").style.background=COL[w];
+  resetGrad();
+}
+function resetGrad(){
+  if(timer){clearInterval(timer);timer=null;}
+  li=0; clearEdges();
+  document.getElementById("stepBtn").disabled=false;
+  document.getElementById("stepBtn").textContent="⏭ Next level";
+  const g=GRAD[cur];
+  document.getElementById("lvlpill").textContent=`${g.name} — ${g.tag}`;
+  document.getElementById("status").innerHTML=g.note+" Press <b>Next level</b>.";
+  document.getElementById("builder").innerHTML=`<div style="color:var(--muted)">Chain-rule sum for <b style="color:${COL[cur]}">${g.name}</b> — step through the ${g.levels.length} level${g.levels.length>1?'s':''}.</div>`;
+}
+
+function fracTerm(pairs){ return pairs.map(p=>F(p[0],p[1])).join('<span class="dot" style="color:var(--muted)"> · </span>'); }
+
+function stepLevel(){
+  const g=GRAD[cur];
+  if(li>=g.levels.length){ return; }
+  const lv=g.levels[li];
+  // highlight path
+  clearEdges(); dimAll();
+  lv.edges.forEach(id=>{const e=document.getElementById(id);e.classList.remove("dim");e.classList.add("hot");});
+  const tgt=document.getElementById(lv.target); tgt.classList.remove("hot"); tgt.classList.add("target");
+  // flash cells on the path
+  lv.edges.forEach(id=>{ if(cellOf[id]){const c=document.getElementById(cellOf[id]); c.classList.remove("cellflash"); void c.getBBox(); c.classList.add("cellflash");} });
+
+  // builder row
+  const builder=document.getElementById("builder");
+  if(li===0) builder.innerHTML="";
+  const row=document.createElement("div"); row.className="termrow";
+  const plus = li>0 ? `<span class="plus">+</span>` : "";
+  row.innerHTML = `${plus}
+     <span class="tlbl" style="background:${COL[cur]}">level ${li+1}${lv.t!=='—'?' · '+lv.t:''}</span>
+     <span>${fracTerm(lv.term)}</span>
+     <span class="route">${lv.route}</span>`;
+  builder.appendChild(row);
+
+  document.getElementById("lvlpill").textContent=`${g.name} — level ${li+1} of ${g.levels.length}`;
+  document.getElementById("status").innerHTML =
+    (cur==="Wo")
+     ? "Single chain — Wₒ is used only once."
+     : `Level ${li+1}: the gradient reaches Wᵢ${cur==='Wh'?'/Wₕ':''} at ${lv.t}. Each extra level back adds one <b>∂Oₜ/∂Oₜ₋₁ = f′·Wₕ</b> factor.`;
+
+  li++;
+  if(li>=g.levels.length){
+    document.getElementById("stepBtn").disabled=true;
+    // collapsed result
+    setTimeout(()=>{
+      const c=document.createElement("div"); c.className="collapse";
+      c.innerHTML = g.collapse + (cur!=="Wo"
+        ? '<div class="eqnote">each level = one time-step\'s error eₜ × that step\'s input. Summing them IS backprop-through-time.</div>'
+        : '<div class="eqnote">with sigmoid + binary cross-entropy the output factors collapse to (ŷ − y).</div>');
+      builder.appendChild(c);
+      c.scrollIntoView({behavior:"smooth",block:"nearest"});
+    }, 350);
+  } else {
+    row.scrollIntoView({behavior:"smooth",block:"nearest"});
+  }
+}
+
+function playLevels(){
+  if(timer) return;
+  resetGrad();
+  timer=setInterval(()=>{
+    if(li>=GRAD[cur].levels.length){ clearInterval(timer); timer=null; return; }
+    stepLevel();
+  }, 1800);
+}
+
+function playForward(){
+  if(timer){clearInterval(timer);timer=null;}
+  resetGrad(); clearEdges();
+  const order=["ex1","eh1","ec1","ex2","eh2","ec2","ex3","eh3","ec3","eo","el"];
+  let i=0;
+  document.getElementById("status").innerHTML="<b>Forward pass:</b> inputs + memory flow left → right to build O₁→O₂→O₃→ŷ→L.";
+  const iv=setInterval(()=>{
+    if(i>=order.length){clearInterval(iv);return;}
+    const e=document.getElementById(order[i]); e.classList.add("fwd");
+    if(cellOf[order[i]]){const c=document.getElementById(cellOf[order[i]]);c.classList.remove("cellflash");void c.getBBox();c.classList.add("cellflash");}
+    setTimeout(()=>e.classList.remove("fwd"), 900);
+    i++;
+  }, 260);
+}
+
+pick("Wi");
+</script>
+</body>
+</html>
